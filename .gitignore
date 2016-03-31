@@ -1,3 +1,4 @@
+_cache
 .rebar3
 _*
 .eunit

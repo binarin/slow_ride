@@ -1,5 +1,7 @@
+REBAR=rebar3
+
 %:
-	rebar3 $@
+	$(REBAR) $@
 
 tests:
-	rebar3 eunit
+	$(REBAR) eunit
