@@ -5,7 +5,8 @@
   {mod, { slow_ride_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    ranch
    ]},
   {env,[]},
   {modules, []},
