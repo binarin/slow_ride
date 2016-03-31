@@ -3,5 +3,4 @@ REBAR=rebar3
 %:
 	$(REBAR) $@
 
-tests:
-	$(REBAR) eunit
+tests: eunit ct dialyzer
