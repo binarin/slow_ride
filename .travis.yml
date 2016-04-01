@@ -1,6 +1,7 @@
 cache:
   directories:
-    - _cache/rebar3
+    - $HOME/.cache/rebar3
+    - $HOME/.cache/rebar3-bin
 
 install:
   - wget https://s3.amazonaws.com/travis-otp-releases/binaries/$(lsb_release -is | tr "A-Z" "a-z")/$(lsb_release -rs)/$(uname -m)/erlang-18.2-nonroot.tar.bz2
@@ -8,12 +9,11 @@ install:
   - mkdir -p ~/.kerl
   - source $HOME/otp/18.2/activate
   - >
-    if [ ! -f _cache/rebar3/rebar3 ]; then
-      mkdir -p _cache/rebar3
+    if [ ! -f $HOME/.cache/rebar3-bin/rebar3 ]; then
+      mkdir -p $HOME/.cache/rebar3-bin/
       git clone https://github.com/erlang/rebar3 _build/rebar3
       (cd _build/rebar3 && ./bootstrap)
-      ls _build/rebar3
-      cp _build/rebar3/rebar3 _cache/rebar3/
+      cp _build/rebar3/rebar3 $HOME/.cache/rebar3-bin/rebar3
     fi
 
-script: "make tests REBAR=_cache/rebar3/rebar3"
+script: "make tests REBAR=$HOME/.cache/rebar3-bin/rebar3"
