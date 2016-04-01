@@ -28,7 +28,14 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-    {ok, { {one_for_all, 0, 1}, []} }.
+    SlowRide = #{id => slow_ride_server
+                ,start => {slow_ride, start_link, []}
+                ,restart => permanent
+                ,shutdown => brutal_kill
+                ,type => worker
+                ,modules => [slow_ride]
+                },
+    {ok, { {one_for_all, 0, 1}, [SlowRide]} }.
 
 %%====================================================================
 %% Internal functions

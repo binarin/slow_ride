@@ -21,12 +21,12 @@ start(_StartType, _StartArgs) ->
 
 %%--------------------------------------------------------------------
 stop(_State) ->
-    ranch:stop_listener(slow_ride),
+    ranch:stop_listener(slow_ride_listener),
     ok.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
 start_listener() ->
-    {ok, _} = ranch:start_listener(slow_ride, 100, ranch_tcp, [{port, 0}],
+    {ok, _} = ranch:start_listener(slow_ride_listener, 100, ranch_tcp, [{port, 0}],
                                    slow_epmd_protocol, []).

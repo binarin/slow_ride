@@ -17,7 +17,8 @@ all() ->
     ].
 
 init_per_testcase(_, Config) ->
-    application:ensure_all_started(slow_ride),
+    catch application:stop(slow_ride),
+    {ok, _} = application:ensure_all_started(slow_ride),
     Config.
 
 end_per_testcase(_, Config) ->

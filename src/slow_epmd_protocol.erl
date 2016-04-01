@@ -51,13 +51,14 @@ switch_to_raw(#state{transport = Transport, socket = Socket}) ->
 
 handle_packet(<<?EPMD_NAMES>>, #state{socket = Socket, transport = Transport} = State) ->
     switch_to_raw(State),
-    Transport:send(Socket, <<(slow_ride:get_port()):32>>),
+    Names = [io_lib:format("name ~s at port ~b~n", [Name, Port]) || {Name, Port} <- slow_ride:names()],
+    Transport:send(Socket, [<<(slow_ride:get_port()):32>>, Names]),
     Transport:close(Socket);
 
 handle_packet(<<?EPMD_ALIVE2_REQ, PortNo:16, _NodeType:8, _Proto:8, _HiVer:16, _LoVer:16, NLen:16, Rest/binary>>,
               State) ->
     <<NodeName:NLen/binary, _ELen:16, _Extra/binary>> = Rest,
-    io:format(standard_error, "ALIVE from ~s on ~b~n", [NodeName, PortNo]),
+    slow_ride:alive(self(), NodeName, PortNo),
     send_alive_resp(State),
     loop_alive(State);
 
