@@ -4,6 +4,7 @@
 -export([started_app_listens_on_port/1
         ,no_listener_after_app_is_stopped/1
         ,registering_new_name/1
+        ,list_of_names_is_returned/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -12,6 +13,7 @@ all() ->
     [registering_new_name
     ,no_listener_after_app_is_stopped
     ,started_app_listens_on_port
+    ,list_of_names_is_returned
     ].
 
 init_per_testcase(_, Config) ->
@@ -29,7 +31,7 @@ started_app_listens_on_port(_Config) ->
     ok.
 
 registering_new_name(_Config) ->
-    {ok, _, Port} = start_node(),
+    {ok, _, Port} = start_node(["-s", "init", "stop"]),
     receive
         {Port, {exit_status, 0}} ->
             ok
@@ -38,6 +40,18 @@ registering_new_name(_Config) ->
             flush(),
             exit(node_failed_to_start)
     end.
+
+list_of_names_is_returned(_Config) ->
+    {ok, _N1, P1} = start_node(["-eval", "io:format(\"ok\")."]),
+    {ok, _N2, P2} = start_node(["-eval", "io:format(\"ok\")."]),
+    receive {P1, {data, "ok"}} -> ok after 10000 -> exit(node_1_failed_to_start) end,
+    receive {P2, {data, "ok"}} -> ok after 10000 -> exit(node_2_failed_to_start) end,
+    timer:sleep(1000),
+    EpmdCmd = lists:flatten(io_lib:format("ERL_EPMD_PORT=~b epmd -names", [slow_ride:get_port()])),
+    {done, 0, NamesOut} = erlsh:run(EpmdCmd, binary, "/tmp"),
+    io:format(standard_error, "~s~n", [NamesOut]),
+    flush(),
+    ok.
 
 flush() ->
     receive
@@ -57,11 +71,11 @@ no_listener_after_app_is_stopped(_Config) ->
 random_node_name() ->
     [ $a + rand:uniform(10) - 1 || _ <- lists:seq(1, 26) ].
 
-start_node()->
+start_node(Args)->
     EpmdPort = slow_ride:get_port(),
     Name = random_node_name(),
     Port = erlang:open_port({spawn_executable, erlsh:fdlink_executable()},
-                            [{args, [os:find_executable("erl"), "-noshell", "-sname", Name, "-cookie", "test", "-eval", "io:format(\"ok\").", "-s", "init", "stop"]}
+                            [{args, [os:find_executable("erl"), "-noshell", "-sname", Name, "-cookie", "test", "-eval", "io:format(\"ok\")."] ++ Args}
                             ,{env, [{"ERL_EPMD_PORT", integer_to_list(EpmdPort)}]}
                             ,exit_status
                             ]),

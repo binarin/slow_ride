@@ -46,6 +46,14 @@ loop(#state{socket = Socket, transport = Transport, transport_ok = OK} = State) 
             Transport:close(Socket)
     end.
 
+switch_to_raw(#state{transport = Transport, socket = Socket}) ->
+    Transport:setopts(Socket, [{packet, raw}]).
+
+handle_packet(<<?EPMD_NAMES>>, #state{socket = Socket, transport = Transport} = State) ->
+    switch_to_raw(State),
+    Transport:send(Socket, <<(slow_ride:get_port()):32>>),
+    Transport:close(Socket);
+
 handle_packet(<<?EPMD_ALIVE2_REQ, PortNo:16, _NodeType:8, _Proto:8, _HiVer:16, _LoVer:16, NLen:16, Rest/binary>>,
               State) ->
     <<NodeName:NLen/binary, _ELen:16, _Extra/binary>> = Rest,
