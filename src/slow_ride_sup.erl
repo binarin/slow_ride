@@ -26,12 +26,11 @@ start_link() ->
 %% Supervisor callbacks
 %%====================================================================
 
-%% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-    SlowRide = #{id => slow_ride_server
+    SlowRide = #{id => ?SERVER
                 ,start => {slow_ride, start_link, []}
                 ,restart => permanent
-                ,shutdown => brutal_kill
+                ,shutdown => 3600000
                 ,type => worker
                 ,modules => [slow_ride]
                 },

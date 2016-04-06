@@ -6,7 +6,10 @@
         ,registering_new_name/1
         ,list_of_names_is_returned/1
         ,pinging_works/1
+        ,dist_connection_is_reported/1
         ]).
+
+-export([connection_reporter/2]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -17,6 +20,7 @@ all() ->
     ,started_app_listens_on_port
     ,list_of_names_is_returned
     ,pinging_works
+    ,dist_connection_is_reported
     ].
 
 init_per_testcase(_, Config) ->
@@ -69,7 +73,16 @@ no_listener_after_app_is_stopped(_Config) ->
 
 pinging_works(_Config) ->
     {ok, N1, _} = start_waiting_node(),
-    % slow_ride:set_sink(self()),
+    PingCmd = lists:flatten(io_lib:format("io:format(net_adm:ping('~s@localhost'))", [N1])),
+    "pong" = start_short_lived_node(["-eval", PingCmd]),
+    ok.
+
+connection_reporter(ReportPid, NodeName) ->
+    ReportPid ! {connection_to_node, NodeName}.
+
+dist_connection_is_reported(_Config) ->
+    slow_ride:connect_callback(?MODULE, connection_reporter, [self()]),
+    {ok, N1, _} = start_waiting_node(),
     PingCmd = lists:flatten(io_lib:format("io:format(net_adm:ping('~s@localhost'))", [N1])),
     "pong" = start_short_lived_node(["-eval", PingCmd]),
     ok.
