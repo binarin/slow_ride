@@ -2,6 +2,8 @@
 -behaviour(ranch_protocol).
 -behaviour(gen_server).
 
+-include_lib("slow_ride/include/slow_ride.hrl").
+
 -define(SERVER, ?MODULE).
 
 -define(EPMD_ALIVE2_REQ, $x).
@@ -14,7 +16,8 @@
 -export([start_link/4]).
 
 %% gen_server
--export([code_change/3, init/1, terminate/2, handle_call/3, handle_cast/2, handle_info/2]).
+-export([code_change/3, init/1, terminate/2, handle_call/3, handle_cast/2,
+         handle_info/2]).
 
 %% API
 
@@ -27,6 +30,7 @@
                ,transport
                ,socket
                ,alive = false
+               ,name
                }).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -64,7 +68,13 @@ handle_info({Closed, Socket}, #state{transport_closed = Closed, socket = Socket}
 handle_info(Msg, State) ->
     {stop, {unknown_info, Msg}, State}.
 
-terminate(_Reason, #state{transport = Transport, socket = Socket}) ->
+terminate(_Reason, #state{transport = Transport, socket = Socket, name = NodeName} = State) ->
+    case State#state.alive of
+        true ->
+            ranch:stop_listener({slow_dist_protocol, NodeName});
+        _ ->
+            ok
+    end,
     Transport:close(Socket),
     ok.
 
@@ -101,13 +111,15 @@ handle_packet(<<?EPMD_NAMES>>, #state{socket = Socket, transport = Transport} = 
     Transport:send(Socket, [<<(slow_ride:get_port()):32>>, Names]),
     {stop, normal, State};
 
-handle_packet(<<?EPMD_ALIVE2_REQ, PortNo:16, NodeType:8, Proto:8, HiVer:16, LoVer:16, NLen:16, Rest/binary>>,
+handle_packet(<<?EPMD_ALIVE2_REQ, PortNo:16, NodeType:8, Proto:8, HiVer:16,
+                LoVer:16, NLen:16, Rest/binary>>,
               State) ->
     <<NodeName:NLen/binary, _ELen:16, Extra/binary>> = Rest,
-    {ok, Creation} = slow_ride:alive(self(), NodeName, PortNo, NodeType, Proto, HiVer, LoVer, Extra),
-    send_alive_resp(Creation, State),
-    active_once(State),
-    {noreply, State#state{alive = true}};
+    Creation = slow_ride:next_creation(NodeName),
+    Node = #node{id = NodeName, real_port = PortNo, node_type = NodeType,
+                 proto = Proto, hi_ver = HiVer, lo_ver = LoVer, extra = Extra,
+                 creation = Creation},
+    handle_alive_req(Node, State);
 
 handle_packet(Data, State) ->
     lager:warning("Unknown EPMD packet: ~p", [Data]),
@@ -115,7 +127,7 @@ handle_packet(Data, State) ->
     {noreply, State}.
 
 send_alive_resp(Creation, #state{transport = Transport, socket = Socket}) ->
-    Transport:setopts(Socket, [{packet, raw}]),
+    Transport:setopts(Socket, [{packet, raw}, {active, once}]),
     Packet = <<?EPMD_ALIVE2_RESP, 0:8, Creation:16>>,
     Transport:send(Socket, Packet).
 
@@ -136,3 +148,15 @@ new_state(Transport, Socket) ->
 
 switch_to_raw(#state{transport = Transport, socket = Socket}) ->
     Transport:setopts(Socket, [{packet, raw}]).
+
+handle_alive_req(#node{id = NodeName, creation = Creation} = Node, State) ->
+    Port = start_dist_listener(Node),
+    slow_ride:alive(self(), Node#node{fake_port = Port}),
+    send_alive_resp(Creation, State),
+    {noreply, State#state{alive = true, name = NodeName}}.
+
+start_dist_listener(#node{id = NodeName} = Node) ->
+    Listener = {slow_dist_protocol, NodeName},
+    ranch:start_listener(Listener, 100, ranch_tcp,
+                         [{port, 0}], slow_dist_protocol, [self(), Node]),
+    ranch:get_port(Listener).

@@ -4,11 +4,12 @@
 -export([terminate/2, init/1, handle_info/2, handle_cast/2, handle_call/3, code_change/3]).
 
 -export([get_port/0
-        ,alive/8
+        ,alive/2
         ,start_link/0
         ,names/0
         ,port_please/1
         ,connect_callback/3
+        ,next_creation/1
         ]).
 
 -define(SERVER, ?MODULE).
@@ -17,16 +18,7 @@
                ,nodes = #{}
                }).
 
--record(node, {id
-              ,real_port
-              ,fake_port
-              ,node_type
-              ,proto
-              ,hi_ver
-              ,lo_ver
-              ,extra
-              ,creation
-              }).
+-include_lib("slow_ride/include/slow_ride.hrl").
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API
@@ -37,8 +29,8 @@ start_link() ->
 get_port() ->
     ranch:get_port(slow_ride_listener).
 
-alive(ConnectionPid, NodeName, PortNo, NodeType, Proto, HiVer, LoVer, Extra) ->
-    gen_server:call(?SERVER, {alive, ConnectionPid, NodeName, PortNo, NodeType, Proto, HiVer, LoVer, Extra}).
+alive(ConnectionPid, Node) ->
+    gen_server:call(?SERVER, {alive, ConnectionPid, Node}).
 
 port_please(NodeName) ->
     case ets:lookup(slow_ride_nodes, NodeName) of
@@ -58,6 +50,10 @@ names() ->
 connect_callback(M, F, A) ->
     gen_server:call(?SERVER, {connect_callback, M, F, A}).
 
+-spec next_creation(binary()) -> 1..3.
+next_creation(NodeName) ->
+    gen_server:call(?SERVER, {next_creation, NodeName}).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Gen server callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -67,10 +63,20 @@ init([]) ->
     start_listener(),
     {ok, #state{}}.
 
-handle_call({alive, ConnectionPid, NodeName, PortNo, NodeType, Proto, HiVer, LoVer, Extra}, _From, State) ->
-    handle_alive(ConnectionPid, NodeName, PortNo, NodeType, Proto, HiVer, LoVer, Extra, State);
+handle_call({alive, ConnectionPid, Node}, _From, State) ->
+    handle_alive(ConnectionPid, Node, State);
+
 handle_call({connect_callback, M, F, A}, _From, State) ->
     handle_connect_callback(M, F, A, State);
+
+handle_call({next_creation, NodeName}, _From, State) ->
+    case ets:lookup(slow_ride_nodes, NodeName) of
+        [#node{creation = Creation}] ->
+            {reply, 1 + (Creation rem 3), State};
+        [] ->
+            {reply, 1, State}
+    end;
+
 handle_call(_Msg, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -91,11 +97,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-handle_alive(ConnectionPid, NodeName, PortNo, NodeType, Proto, HiVer, LoVer, Extra, State) ->
+handle_alive(ConnectionPid, #node{id = NodeName} = Node, State) ->
     link(ConnectionPid),
-    Creation = rand:uniform(3),
-    ets:insert(slow_ride_nodes, #node{id = NodeName, real_port = PortNo, node_type = NodeType, proto = Proto, hi_ver = HiVer, lo_ver = LoVer, extra = Extra, creation = Creation}),
-    {reply, {ok, Creation}, add_node(ConnectionPid, NodeName, State)}.
+    ets:insert(slow_ride_nodes, Node),
+    {reply, ok, add_node(ConnectionPid, NodeName, State)}.
 
 handle_connect_callback(M, F, A, State) ->
     {reply, ok, State#state{connect_callback = {M, F, A}}}.
