@@ -150,13 +150,7 @@ switch_to_raw(#state{transport = Transport, socket = Socket}) ->
     Transport:setopts(Socket, [{packet, raw}]).
 
 handle_alive_req(#node{id = NodeName, creation = Creation} = Node, State) ->
-    Port = start_dist_listener(Node),
+    Port = slow_dist_protocol:start_listener(self(), Node#node.id, Node#node.real_port),
     slow_ride:alive(self(), Node#node{fake_port = Port}),
     send_alive_resp(Creation, State),
     {noreply, State#state{alive = true, name = NodeName}}.
-
-start_dist_listener(#node{id = NodeName} = Node) ->
-    Listener = {slow_dist_protocol, NodeName},
-    ranch:start_listener(Listener, 100, ranch_tcp,
-                         [{port, 0}], slow_dist_protocol, [self(), Node]),
-    ranch:get_port(Listener).

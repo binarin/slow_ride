@@ -1,0 +1,2 @@
+:node-sname "slow_ride_shell@localhost"
+:start-command "rebar3 shell --sname slow_ride_shell@localhost"

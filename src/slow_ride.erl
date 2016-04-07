@@ -34,7 +34,7 @@ alive(ConnectionPid, Node) ->
 
 port_please(NodeName) ->
     case ets:lookup(slow_ride_nodes, NodeName) of
-        [#node{real_port = Port, node_type = NodeType, proto = Proto, hi_ver = HiVer, lo_ver = LoVer, extra = Extra}] ->
+        [#node{fake_port = Port, node_type = NodeType, proto = Proto, hi_ver = HiVer, lo_ver = LoVer, extra = Extra}] ->
             {ok, Port, NodeType, Proto, HiVer, LoVer, Extra};
         [] ->
             {error, not_found}
@@ -109,7 +109,7 @@ add_node(ConnectionPid, NodeName, #state{nodes = Nodes} = State) ->
     State#state{nodes = Nodes#{ConnectionPid => NodeName}}.
 
 start_listener() ->
-    {ok, _} = ranch:start_listener(slow_ride_listener, 100, ranch_tcp, [{port, 0}],
+    {ok, _} = ranch:start_listener(slow_ride_listener, 2, ranch_tcp, [{port, 0}],
                                    slow_epmd_protocol, []).
 
 stop_listener() ->
