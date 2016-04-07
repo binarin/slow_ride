@@ -12,6 +12,7 @@
                , socket
                , target_socket
                , node
+               , from
                , parent
                }).
 
@@ -34,20 +35,10 @@ start_link(Ref, Socket, Tranport, Opts) ->
     Pid = spawn_link(?MODULE, init, [Ref, Socket, Tranport, Opts]),
     {ok, Pid}.
 
--define(DD(__Fmt, __Args),
-        (fun() ->
-                 __UserMsg = io_lib:format(__Fmt, __Args),
-                 {{__Year, __Month, __Day}, {__Hour, __Minute, __Second}} = calendar:now_to_local_time(erlang:timestamp()),
-                 __Msg = io_lib:format("[~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0B ~s ~s:~B] ~s~n",
-                                       [__Year, __Month, __Day, __Hour, __Minute, __Second, node(), ?MODULE, ?LINE, __UserMsg]),
-                 file:write_file("/tmp/erl-debug.log", __Msg, [append]),
-                 error_logger:info_msg("~s", [__Msg])
-         end)()).
-
 init(Ref, Socket, Transport, [EpmdConnPid, NodeName, RealPort]) ->
     ok = ranch:accept_ack(Ref),
     State = init_transport(Transport, Socket),
-    State1 = State#state{parent = EpmdConnPid, node = NodeName},
+    State1 = State#state{parent = EpmdConnPid, node = binary_to_atom(NodeName, utf8)},
     State2 = open_target(RealPort, State1),
     loop(State2).
 
@@ -73,28 +64,14 @@ init_transport(Transport, Socket) ->
 loop(#state{transport_ok = OK, transport_closed = Closed, transport_error = Error,
             transport = Transport, socket = Socket, target_socket = TargetSocket} = State) ->
     receive
-        %% Hadshake completed
         {OK, TargetSocket, <<$a, _/binary>> = Data} ->
-            lager:debug("Handshake - target ack"),
-            inet:setopts(TargetSocket, [{packet, 4}, {active, once}]),
-
-            %% Preventing race during packet size switch
-            Transport:setopts(Socket, [{active, false}]),
-            ok = Transport:send(Socket, Data),
-            Transport:setopts(Socket, [{packet, 4}, {active, once}]),
-
-            loop_dist(State);
-        %% Handshake data
+            handle_challenge_ack(Data, State);
+        {OK, Socket, <<$n, _/binary>> = Data} ->
+            handle_send_name(Data, State);
         {OK, Socket, Data} ->
-            lager:debug("Handshake - to target ~p", [Data]),
-            ok = gen_tcp:send(TargetSocket, Data),
-            Transport:setopts(Socket, [{active, once}]),
-            loop(State);
+            handle_handshake_packet_from_source(Data, State);
         {OK, TargetSocket, Data} ->
-            lager:debug("Handshake - from target ~p", [Data]),
-            ok = Transport:send(Socket, Data),
-            inet:setopts(TargetSocket, [{active, once}]),
-            loop(State);
+            handle_handshake_packet_from_target(Data, State);
         %% Errors
         {Error, Socket, _Reason} ->
             lager:debug("Handshake - err on incoming socket ~p", [_Reason]),
@@ -138,3 +115,37 @@ loop_dist(#state{transport_ok = OK, transport_closed = Closed, transport_error =
             lager:debug("Dist - close on outgoing socket", []),
             Transport:close(Socket)
     end.
+
+handle_challenge_ack(Data, #state{target_socket = TargetSocket, transport = Transport, socket = Socket} = State) ->
+    lager:debug("Handshake - target ack"),
+    inet:setopts(TargetSocket, [{packet, 4}, {active, once}]),
+    %% Preventing race during packet size switch - so we don't
+    %% accidentially get first packet of dist traffic.
+    Transport:setopts(Socket, [{active, false}]),
+    ok = Transport:send(Socket, Data),
+    Transport:setopts(Socket, [{packet, 4}, {active, once}]),
+    loop_dist(State).
+
+handle_send_name(<<$n, _Version:16, _Flag:32, From/binary>> = Data, State) ->
+    lager:debug("Handshake - to target ~p (from ~s)", [Data, From]),
+    send_target(Data, State),
+    source_active_once(State),
+    loop(State#state{from = binary_to_atom(From, utf8)}).
+
+send_target(Data, #state{target_socket = TargetSocket}) ->
+    ok = gen_tcp:send(TargetSocket, Data).
+
+source_active_once(#state{transport = Transport, socket = Socket}) ->
+    Transport:setopts(Socket, [{active, once}]).
+
+handle_handshake_packet_from_source(Data, #state{target_socket = TargetSocket, transport = Transport, socket = Socket} = State) ->
+    lager:debug("Handshake - to target ~p", [Data]),
+    ok = gen_tcp:send(TargetSocket, Data),
+    Transport:setopts(Socket, [{active, once}]),
+    loop(State).
+
+handle_handshake_packet_from_target(Data, #state{transport = Transport, socket = Socket, target_socket = TargetSocket} = State) ->
+    lager:debug("Handshake - from target ~p", [Data]),
+    ok = Transport:send(Socket, Data),
+    inet:setopts(TargetSocket, [{active, once}]),
+    loop(State).
