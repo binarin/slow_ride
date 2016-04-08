@@ -24,13 +24,13 @@
 %% internal functions
 -export([init/4]).
 
--record(state, {transport_ok
-               ,transport_closed
-               ,transport_error
-               ,transport
-               ,socket
-               ,alive = false
-               ,name
+-record(state, { transport_ok
+               , transport_closed
+               , transport_error
+               , transport
+               , socket
+               , alive = false
+               , name
                }).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -153,4 +153,9 @@ handle_alive_req(#node{id = NodeName, creation = Creation} = Node, State) ->
     Port = slow_dist_protocol:start_listener(self(), Node#node.id, Node#node.real_port),
     slow_ride:alive(self(), Node#node{fake_port = Port}),
     send_alive_resp(Creation, State),
+    invoke_node_registered_callback(NodeName),
     {noreply, State#state{alive = true, name = NodeName}}.
+
+invoke_node_registered_callback(NodeName) ->
+    {Module, Args} = slow_ride:callback_module(),
+    Module:node_registered(binary_to_atom(NodeName, utf8), Args).

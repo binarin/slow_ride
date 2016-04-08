@@ -14,6 +14,8 @@
                , node
                , from
                , parent
+               , callback_module
+               , callback_args
                }).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -25,7 +27,7 @@
 start_listener(EpmdConn, NodeName, RealPort) ->
     Listener = listener_name(NodeName),
     ranch:start_listener(Listener, 2, ranch_tcp,
-                         [{port, 0}], slow_dist_protocol, [EpmdConn, NodeName, RealPort]),
+                         [{port, 0}], slow_dist_protocol, [EpmdConn, RealPort]),
     ranch:get_port(Listener).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -35,18 +37,23 @@ start_link(Ref, Socket, Tranport, Opts) ->
     Pid = spawn_link(?MODULE, init, [Ref, Socket, Tranport, Opts]),
     {ok, Pid}.
 
-init(Ref, Socket, Transport, [EpmdConnPid, NodeName, RealPort]) ->
+init(Ref, Socket, Transport, [EpmdConnPid, RealPort]) ->
     ok = ranch:accept_ack(Ref),
     State = init_transport(Transport, Socket),
-    State1 = State#state{parent = EpmdConnPid, node = binary_to_atom(NodeName, utf8)},
+    State1 = State#state{parent = EpmdConnPid},
     State2 = open_target(RealPort, State1),
-    loop(State2).
+    State3 = init_callback(State2),
+    loop(State3).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Internal functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 listener_name(NodeName) ->
     {slow_dist_protocol, NodeName}.
+
+init_callback(State) ->
+    {Mod, Args} = slow_ride:callback_module(),
+    State#state{callback_module = Mod, callback_args = Args}.
 
 init_transport(Transport, Socket) ->
     {OK, Closed, Error} = Transport:messages(),
@@ -68,6 +75,8 @@ loop(#state{transport_ok = OK, transport_closed = Closed, transport_error = Erro
             handle_challenge_ack(Data, State);
         {OK, Socket, <<$n, _/binary>> = Data} ->
             handle_send_name(Data, State);
+        {OK, TargetSocket, <<$n, _/binary>> = Data} ->
+            handle_send_challenge(Data, State);
         {OK, Socket, Data} ->
             handle_handshake_packet_from_source(Data, State);
         {OK, TargetSocket, Data} ->
@@ -124,6 +133,7 @@ handle_challenge_ack(Data, #state{target_socket = TargetSocket, transport = Tran
     Transport:setopts(Socket, [{active, false}]),
     ok = Transport:send(Socket, Data),
     Transport:setopts(Socket, [{packet, 4}, {active, once}]),
+    invoke_connection_established_callback(State),
     loop_dist(State).
 
 handle_send_name(<<$n, _Version:16, _Flag:32, From/binary>> = Data, State) ->
@@ -135,8 +145,14 @@ handle_send_name(<<$n, _Version:16, _Flag:32, From/binary>> = Data, State) ->
 send_target(Data, #state{target_socket = TargetSocket}) ->
     ok = gen_tcp:send(TargetSocket, Data).
 
+send_source(Data, #state{socket = Socket, transport = Transport}) ->
+    ok = Transport:send(Socket, Data).
+
 source_active_once(#state{transport = Transport, socket = Socket}) ->
     Transport:setopts(Socket, [{active, once}]).
+
+target_active_once(#state{target_socket = TargetSocket}) ->
+    inet:setopts(TargetSocket, [{active, once}]).
 
 handle_handshake_packet_from_source(Data, #state{target_socket = TargetSocket, transport = Transport, socket = Socket} = State) ->
     lager:debug("Handshake - to target ~p", [Data]),
@@ -149,3 +165,12 @@ handle_handshake_packet_from_target(Data, #state{transport = Transport, socket =
     ok = Transport:send(Socket, Data),
     inet:setopts(TargetSocket, [{active, once}]),
     loop(State).
+
+invoke_connection_established_callback(#state{callback_module = Mod, callback_args = Args, node = Node, from = From}) ->
+    Mod:connection_established(From, Node, Args).
+
+handle_send_challenge(<<$n, _Version:16, _Flag:32, _Challenge:32, Name/binary>> = Data, State) ->
+    lager:debug("Handshake - full name of target is '~s'", [Name]),
+    send_source(Data, State),
+    target_active_once(State),
+    loop(State#state{node = binary_to_atom(Name, utf8)}).

@@ -1,20 +1,25 @@
 -module(slow_ride).
 -behaviour(gen_server).
 
+-callback connection_established(node(), node(), State) -> {ok, State} when State :: term().
+-callback node_registered(NodeWithoutHost :: atom(), State) -> {ok, State} when State :: term().
+
 -export([terminate/2, init/1, handle_info/2, handle_cast/2, handle_call/3, code_change/3]).
 
--export([get_port/0
-        ,alive/2
-        ,start_link/0
-        ,names/0
-        ,port_please/1
-        ,connect_callback/3
-        ,next_creation/1
+-export([ get_port/0
+        , alive/2
+        , start_link/0
+        , names/0
+        , port_please/1
+        , callback_module/2
+        , callback_module/0
+        , next_creation/1
         ]).
 
 -define(SERVER, ?MODULE).
 
--record(state, {connect_callback
+-record(state, {callback_module = slow_ride_noop_callback
+               ,callback_args = undefined
                ,nodes = #{}
                }).
 
@@ -46,9 +51,13 @@ names() ->
                       [{Id, Port} | Acc]
               end, [], slow_ride_nodes).
 
--spec connect_callback(module(), atom(), term()) -> ok.
-connect_callback(M, F, A) ->
-    gen_server:call(?SERVER, {connect_callback, M, F, A}).
+-spec callback_module() -> {module(), term()}.
+callback_module() ->
+    gen_server:call(?SERVER, callback_module).
+
+-spec callback_module(module(), term()) -> ok.
+callback_module(Mod, Args) ->
+    gen_server:call(?SERVER, {callback_module, Mod, Args}).
 
 -spec next_creation(binary()) -> 1..3.
 next_creation(NodeName) ->
@@ -66,8 +75,11 @@ init([]) ->
 handle_call({alive, ConnectionPid, Node}, _From, State) ->
     handle_alive(ConnectionPid, Node, State);
 
-handle_call({connect_callback, M, F, A}, _From, State) ->
-    handle_connect_callback(M, F, A, State);
+handle_call({callback_module, M, A}, _From, State) ->
+    handle_callback_module(M, A, State);
+
+handle_call(callback_module, _From, #state{callback_module = Module, callback_args = Args} = State) ->
+    {reply, {Module, Args}, State};
 
 handle_call({next_creation, NodeName}, _From, State) ->
     case ets:lookup(slow_ride_nodes, NodeName) of
@@ -102,8 +114,8 @@ handle_alive(ConnectionPid, #node{id = NodeName} = Node, State) ->
     ets:insert(slow_ride_nodes, Node),
     {reply, ok, add_node(ConnectionPid, NodeName, State)}.
 
-handle_connect_callback(M, F, A, State) ->
-    {reply, ok, State#state{connect_callback = {M, F, A}}}.
+handle_callback_module(M, A, State) ->
+    {reply, ok, State#state{callback_module = M, callback_args = A}}.
 
 add_node(ConnectionPid, NodeName, #state{nodes = Nodes} = State) ->
     State#state{nodes = Nodes#{ConnectionPid => NodeName}}.
