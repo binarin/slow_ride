@@ -105,12 +105,14 @@ loop_dist(#state{transport_ok = OK, transport_closed = Closed, transport_error =
     receive
         {OK, Socket, Data} ->
             ok = gen_tcp:send(TargetSocket, Data),
+            {ok, Args} = invoke_forward_packet_callback(Data, State),
             Transport:setopts(Socket, [{active, once}]),
-            loop_dist(State);
+            loop_dist(State#state{callback_args = Args});
         {OK, TargetSocket, Data} ->
             ok = Transport:send(Socket, Data),
             inet:setopts(TargetSocket, [{active, once}]),
-            loop_dist(State);
+            {ok, Args} = invoke_reverse_packet_callback(Data, State),
+            loop_dist(State#state{callback_args = Args});
         {Error, Socket, _Reason} ->
             lager:debug("Dist - err on incoming socket ~p", [_Reason]),
             gen_tcp:close(TargetSocket);
@@ -133,8 +135,8 @@ handle_challenge_ack(Data, #state{target_socket = TargetSocket, transport = Tran
     Transport:setopts(Socket, [{active, false}]),
     ok = Transport:send(Socket, Data),
     Transport:setopts(Socket, [{packet, 4}, {active, once}]),
-    invoke_connection_established_callback(State),
-    loop_dist(State).
+    {ok, Args} = invoke_connection_established_callback(State),
+    loop_dist(State#state{callback_args = Args}).
 
 handle_send_name(<<$n, _Version:16, _Flag:32, From/binary>> = Data, State) ->
     lager:debug("Handshake - to target ~p (from ~s)", [Data, From]),
@@ -166,11 +168,17 @@ handle_handshake_packet_from_target(Data, #state{transport = Transport, socket =
     inet:setopts(TargetSocket, [{active, once}]),
     loop(State).
 
-invoke_connection_established_callback(#state{callback_module = Mod, callback_args = Args, node = Node, from = From}) ->
-    Mod:connection_established(From, Node, Args).
+invoke_connection_established_callback(#state{callback_module = Mod, callback_args = Args0, node = Node, from = From}) ->
+    Mod:connection_established(From, Node, Args0).
 
 handle_send_challenge(<<$n, _Version:16, _Flag:32, _Challenge:32, Name/binary>> = Data, State) ->
     lager:debug("Handshake - full name of target is '~s'", [Name]),
     send_source(Data, State),
     target_active_once(State),
     loop(State#state{node = binary_to_atom(Name, utf8)}).
+
+invoke_forward_packet_callback(Data, #state{callback_module = Mod, callback_args = Args, node = Target, from = Source}) ->
+    Mod:packet(Source, Target, Data, Args).
+
+invoke_reverse_packet_callback(Data, #state{callback_module = Mod, callback_args = Args, node = Target, from = Source}) ->
+    Mod:packet(Target, Source, Data, Args).

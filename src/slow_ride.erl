@@ -3,6 +3,7 @@
 
 -callback connection_established(node(), node(), State) -> {ok, State} when State :: term().
 -callback node_registered(NodeWithoutHost :: atom(), State) -> {ok, State} when State :: term().
+-callback packet(node(), node(), binary(), State) -> {ok, State} when State :: term().
 
 -export([terminate/2, init/1, handle_info/2, handle_cast/2, handle_call/3, code_change/3]).
 
@@ -121,7 +122,7 @@ add_node(ConnectionPid, NodeName, #state{nodes = Nodes} = State) ->
     State#state{nodes = Nodes#{ConnectionPid => NodeName}}.
 
 start_listener() ->
-    {ok, _} = ranch:start_listener(slow_ride_listener, 2, ranch_tcp, [{port, 0}],
+    {ok, _} = ranch:start_listener(slow_ride_listener, 2, ranch_tcp, [{port, 3333}],
                                    slow_epmd_protocol, []).
 
 stop_listener() ->

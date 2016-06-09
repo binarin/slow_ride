@@ -1,5 +1,5 @@
 -module(basic_SUITE).
--export([all/0, init_per_testcase/2, end_per_testcase/2]).
+-export([all/0, init_per_testcase/2, end_per_testcase/2, init_per_suite/1]).
 
 -export([ started_app_listens_on_port/1
         , no_listener_after_app_is_stopped/1
@@ -8,6 +8,8 @@
         , pinging_works/1
         , epmd_connection_is_reported/1
         , dist_connection_is_reported/1
+        , packet_callback_invoked/1
+        , noop/1
         ]).
 
 -export([connection_reporter/2]).
@@ -15,6 +17,7 @@
 -behaviour(slow_ride).
 -export([ connection_established/3
         , node_registered/2
+        , packet/4
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -28,7 +31,13 @@ all() ->
     , pinging_works
     , epmd_connection_is_reported
     , dist_connection_is_reported
+    , packet_callback_invoked
     ].
+
+init_per_suite(Config) ->
+    ets:new(dist_packet_count, [public, named_table, {heir, whereis(init), undefined}]),
+    ets:insert(dist_packet_count, [{{a, b}, 0}, {{a, c}, 0}]),
+    Config.
 
 init_per_testcase(_, Config) ->
     catch application:stop(slow_ride),
@@ -42,6 +51,9 @@ end_per_testcase(_, Config) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Test Cases
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+noop(_Config) ->
+    ok.
+
 started_app_listens_on_port(_Config) ->
     application:ensure_all_started(slow_ride),
     Port = slow_ride:get_port(),
@@ -117,16 +129,37 @@ dist_connection_is_reported(_Config) ->
     end,
     ok.
 
+packet_callback_invoked(_Config) ->
+    slow_ride:callback_module(?MODULE, [self(), undefined]),
+    {ok, N1, _} = start_waiting_node(),
+    PingCmd = lists:flatten(io_lib:format("io:format(net_adm:ping('~s'))", [N1])),
+    "pong" = start_short_lived_node(["-eval", PingCmd]),
+    case ets:match(dist_packet_count, {{'_', N1}, '$1'}) of
+        [[Cnt]] when Cnt > 0 ->
+            ok;
+        [[0]] ->
+            ct:fail(packet_callback_not_invoked);
+        [] ->
+            ct:pal("Node ~p, ets ~p", [N1, ets:match(dist_packet_count, '$1')]),
+            ct:fail(no_traces_of_callbacks_at_all)
+    end,
+    ok.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% slow_ride callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 connection_established(From, To, [ReportTo, ReportRef] = State) ->
-    ct:pal("~p", [{From, To, State}]),
     ReportTo ! {connection_established, ReportRef, From, To},
+    ets:insert(dist_packet_count, {{From, To}, 0}),
+    ets:insert(dist_packet_count, {{To, From}, 0}),
     {ok, State}.
 
 node_registered(NodeName, [ReportTo, ReportRef] = State) ->
     ReportTo ! {node_registered, ReportRef, NodeName},
+    {ok, State}.
+
+packet(From, To, _, State) ->
+    ets:update_counter(dist_packet_count, {From, To}, 1),
     {ok, State}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
