@@ -7,6 +7,7 @@ ROOT=$(readlink -f $(dirname $0)/..)
 R=$ROOT/scripts/slow_ride
 
 wait-start() {
+    echo Waiting for slow_ride registration
     local try_no
     for try_no in $(seq 1 20); do
         if epmd -names | grep -qP 'name slow_ride at'; then
@@ -55,14 +56,15 @@ ensure-epmd() {
     erl -noinput -sname epmd-start -s erlang halt
 }
 
+
+start-slow-ride() {
+    echo Starting slow_ride
+    $R start > /dev/null 2>&1 &
+    wait-start
+}
+
 ensure-epmd
-
-echo Starting slow_ride
-$R start > /dev/null 2>&1 &
-
-echo Waiting for slow_ride registration
-wait-start
-
+start-slow-ride
 check-port-action
 check-stop-action
 
