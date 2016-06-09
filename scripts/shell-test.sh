@@ -51,6 +51,12 @@ action() {
     $R "$@"
 }
 
+ensure-epmd() {
+    erl -noinput -sname epmd-start -s erlang halt
+}
+
+ensure-epmd
+
 echo Starting slow_ride
 $R start > /dev/null 2>&1 &
 
