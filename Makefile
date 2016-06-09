@@ -10,5 +10,11 @@ case:
 	$(REBAR) ct -v --suite $(S) --case $(C)
 	firefox $$(find -name *_suite.$(C).html | sort | tail -n1)
 
-tests: eunit ct dialyzer
+compile:
+	$(REBAR) compile
+
+tests: eunit ct dialyzer shell-test
 	echo OK
+
+shell-test: compile
+	./scripts/shell-test.sh

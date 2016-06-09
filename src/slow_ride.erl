@@ -122,7 +122,8 @@ add_node(ConnectionPid, NodeName, #state{nodes = Nodes} = State) ->
     State#state{nodes = Nodes#{ConnectionPid => NodeName}}.
 
 start_listener() ->
-    {ok, _} = ranch:start_listener(slow_ride_listener, 2, ranch_tcp, [{port, 3333}],
+    {ok, Port} = application:get_env(port),
+    {ok, _} = ranch:start_listener(slow_ride_listener, 2, ranch_tcp, [{port, Port}],
                                    slow_epmd_protocol, []).
 
 stop_listener() ->

@@ -9,7 +9,9 @@
     ranch,
     lager
    ]},
-  {env,[]},
+  {env,[{port, 0}
+       ,{node_name, 'slow_ride@localhost'}
+       ]},
   {modules, []},
 
   {maintainers, []},

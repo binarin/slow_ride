@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -eu
+set -o pipefail
+
+detect-root() {
+    readlink -f $(dirname ${BASH_SOURCE[0]})/..
+}
+
+export SLOW_RIDE_ROOT=$(detect-root)
+export SLOW_RIDE_NODENAME=slow_ride@localhost
+export SLOW_RIDE_PORT=44369
+
+erlang-path() {
+    (cd $SLOW_RIDE_ROOT && rebar3 path)
+}
+
+case "$1" in
+    start)
+        erl +B -pa $(erlang-path) -noinput -sname $SLOW_RIDE_NODENAME -s slow_ride_cli
+        ;;
+    *)
+        erl +B -pa $(erlang-path) -noinput -sname cli -s slow_ride_cli ctl -- "$@"
+        ;;
+esac
