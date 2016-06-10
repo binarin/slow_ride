@@ -89,7 +89,7 @@ list_of_names_is_returned(_Config) ->
 no_listener_after_app_is_stopped(_Config) ->
     Port = slow_ride:get_port(),
     application:stop(slow_ride),
-    {error, econnrefused} = gen_tcp:connect({127, 0, 0, 1}, Port, [binary]),
+    {error, _} = gen_tcp:connect({127, 0, 0, 1}, Port, [binary]),
     ok.
 
 pinging_works(_Config) ->
