@@ -3,7 +3,7 @@ REBAR=rebar3
 %:
 	$(REBAR) $@
 
-ct:
+ct: release
 	$(REBAR) ct -v
 
 case:
