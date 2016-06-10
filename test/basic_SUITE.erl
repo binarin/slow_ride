@@ -18,6 +18,8 @@
 -export([ connection_established/3
         , node_registered/2
         , packet/4
+        , init/1
+        , init_global/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -148,6 +150,12 @@ packet_callback_invoked(_Config) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% slow_ride callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+init(State) ->
+    {ok, State}.
+
+init_global(State) ->
+    {ok, State}.
+
 connection_established(From, To, [ReportTo, ReportRef] = State) ->
     ReportTo ! {connection_established, ReportRef, From, To},
     ets:insert(dist_packet_count, {{From, To}, 0}),
@@ -174,12 +182,9 @@ flush() ->
         0 -> ok
     end.
 
-random_node_name() ->
-    [ $a + rand:uniform(10) - 1 || _ <- lists:seq(1, 26) ].
-
 start_node(Args)->
     EpmdPort = slow_ride:get_port(),
-    Name = random_node_name(),
+    Name = slow_ride_ct:random_node_name(),
     Port = erlang:open_port({spawn_executable, erlsh:fdlink_executable()},
                             [{args, [os:find_executable("erl"), "-noshell", "-sname", Name ++ "@localhost", "-cookie", "test"] ++ Args}
                             ,{env, [{"ERL_EPMD_PORT", integer_to_list(EpmdPort)}]}

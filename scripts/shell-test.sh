@@ -4,7 +4,7 @@ set -o pipefail
 
 ROOT=$(readlink -f $(dirname $0)/..)
 
-R=$ROOT/scripts/slow_ride
+R=$ROOT/scripts/slow-ride-ctl
 
 wait-start() {
     echo Waiting for slow_ride registration

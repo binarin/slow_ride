@@ -52,7 +52,8 @@ listener_name(NodeName) ->
     {slow_dist_protocol, NodeName}.
 
 init_callback(State) ->
-    {Mod, Args} = slow_ride:callback_module(),
+    {Mod, Args0} = slow_ride:callback_module(),
+    {ok, Args} = Mod:init(Args0),
     State#state{callback_module = Mod, callback_args = Args}.
 
 init_transport(Transport, Socket) ->
@@ -64,9 +65,6 @@ init_transport(Transport, Socket) ->
           ,transport = Transport
           ,socket = Socket
           }.
-
-%% active_once(#state{socket = S, transport = T}) ->
-%%     T:setopts(S, [{active, once}]).
 
 loop(#state{transport_ok = OK, transport_closed = Closed, transport_error = Error,
             transport = Transport, socket = Socket, target_socket = TargetSocket} = State) ->
@@ -135,8 +133,7 @@ handle_challenge_ack(Data, #state{target_socket = TargetSocket, transport = Tran
     Transport:setopts(Socket, [{active, false}]),
     ok = Transport:send(Socket, Data),
     Transport:setopts(Socket, [{packet, 4}, {active, once}]),
-    {ok, Args} = invoke_connection_established_callback(State),
-    loop_dist(State#state{callback_args = Args}).
+    handle_callback_result(invoke_connection_established_callback(State), State).
 
 handle_send_name(<<$n, _Version:16, _Flag:32, From/binary>> = Data, State) ->
     lager:debug("Handshake - to target ~p (from ~s)", [Data, From]),
@@ -182,3 +179,16 @@ invoke_forward_packet_callback(Data, #state{callback_module = Mod, callback_args
 
 invoke_reverse_packet_callback(Data, #state{callback_module = Mod, callback_args = Args, node = Target, from = Source}) ->
     Mod:packet(Target, Source, Data, Args).
+
+handle_callback_result({ok, Args}, State) ->
+    loop_dist(State#state{callback_args = Args});
+handle_callback_result({drop, _}, State) ->
+    close_source(State),
+    close_target(State),
+    ok.
+
+close_target(#state{target_socket = TargetSocket}) ->
+    gen_tcp:close(TargetSocket).
+
+close_source(#state{socket = Socket, transport = Transport}) ->
+    Transport:close(Socket).

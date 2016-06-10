@@ -4,6 +4,9 @@
 -callback connection_established(node(), node(), State) -> {ok, State} when State :: term().
 -callback node_registered(NodeWithoutHost :: atom(), State) -> {ok, State} when State :: term().
 -callback packet(node(), node(), binary(), State) -> {ok, State} when State :: term().
+%% init_global called once, its result is then passed to init of every connection
+-callback init_global(term()) -> {ok, State} when State :: term().
+-callback init(term()) -> {ok, State} when State :: term().
 
 -export([terminate/2, init/1, handle_info/2, handle_cast/2, handle_call/3, code_change/3]).
 
@@ -15,6 +18,7 @@
         , callback_module/2
         , callback_module/0
         , next_creation/1
+        , node_pair/2
         ]).
 
 -define(SERVER, ?MODULE).
@@ -65,13 +69,29 @@ next_creation(NodeName) ->
     gen_server:call(?SERVER, {next_creation, NodeName}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Helpers for callbacks
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Sorted tuple of two nodes, so we can identify connection between
+%% nodes irregarding who was the initiator of that connection.
+node_pair(N1, N2) when N1 < N2 ->
+    {N1, N2};
+node_pair(N1, N2) ->
+    {N2, N1}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Gen server callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init([]) ->
     process_flag(trap_exit, true),
     ets:new(slow_ride_nodes, [public, named_table, {keypos, 2}]),
     start_listener(),
-    {ok, #state{}}.
+    {ok, CallbackModule} = application:get_env(callback_module),
+    {ok, CallbackArgs} = application:get_env(callback_args),
+    {ok, CallbackState} = CallbackModule:init_global(CallbackArgs),
+    State = #state{callback_module = CallbackModule, callback_args = CallbackState},
+    lager:info("Started slow_ride on port ~b with callback ~s", [slow_ride:get_port(), CallbackModule]),
+    {ok, State}.
 
 handle_call({alive, ConnectionPid, Node}, _From, State) ->
     handle_alive(ConnectionPid, Node, State);

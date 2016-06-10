@@ -7,10 +7,13 @@
    [kernel,
     stdlib,
     ranch,
-    lager
+    lager,
+    gproc
    ]},
   {env,[{port, 0}
        ,{node_name, 'slow_ride@localhost'}
+       ,{callback_module, slow_ride_noop_callback}
+       ,{callback_args, undefined}
        ]},
   {modules, []},
 

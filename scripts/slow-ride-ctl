@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -eu
+set -o pipefail
+
+detect-primary-binary() {
+    local root
+    root=$(cd $(dirname ${BASH_SOURCE[0]}) && pwd -P)
+    if [[ -f $root/slow_ride ]]; then
+        # We are a part of release
+        echo $root/slow_ride
+    else
+        # rebar3 release 1>&2
+        echo $(cd $root/../_build/default/rel/slow_ride/bin && pwd -P)/slow_ride
+    fi
+}
+
+ensure-cookie() {
+    if [[ ! -f $HOME/.erlang.cookie ]]; then
+        erl -sname cookie-ensurer-$$ -noinput -s erlang halt
+    fi
+    cat $HOME/.erlang.cookie
+}
+
+export RELX_REPLACE_OS_VARS=true
+
+export SLOW_RIDE_BINARY=$(detect-primary-binary)
+export SLOW_RIDE_NODETYPE=-sname
+export SLOW_RIDE_NODENAME=slow_ride@localhost
+export SLOW_RIDE_PORT=44369
+export SLOW_RIDE_COOKIE=$(ensure-cookie)
+export SLOW_RIDE_CALLBACK_MODULE=slow_ride_cli_callback
+
+TMP_OPTS=$(getopt -o n:p:c: --long node:,port:,callback: -n slow_ride -- "$@")
+eval set -- "$TMP_OPTS"
+while true; do
+    case "$1" in
+        -n|--node)
+            SLOW_RIDE_NODENAME=$2; shift 2;;
+        -p|--port)
+            SLOW_RIDE_PORT=$2; shift 2;;
+        -c|--callback)
+            SLOW_RIDE_CALLBACK_MODULE=$2; shift 2;;
+        --) shift; break;;
+        *) echo Internal error; exit 1;;
+    esac
+done
+
+case "$1" in
+    start|console|foreground|stop|remote_console)
+        $SLOW_RIDE_BINARY $1
+        ;;
+    *)
+        $SLOW_RIDE_BINARY rpc slow_ride_cli action "$@"
+        ;;
+esac

@@ -4,7 +4,15 @@
 -export([connection_established/3
         ,node_registered/2
         ,packet/4
+        ,init/1
+        ,init_global/1
         ]).
+
+init(State) ->
+    {ok, State}.
+
+init_global(State) ->
+    {ok, State}.
 
 connection_established(_SourceNode, _DestinationNode, State) ->
     {ok, State}.
