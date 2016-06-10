@@ -16,4 +16,4 @@ install:
       cp _build/rebar3/rebar3 $HOME/.cache/rebar3-bin/rebar3
     fi
 
-script: "make tests REBAR=$HOME/.cache/rebar3-bin/rebar3"
+script: "PATH=$HOME/.cache/rebar3-bin/:$PATH make tests"
