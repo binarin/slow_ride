@@ -35,12 +35,37 @@ init_per_suite(Config) ->
 blocking_prevents_new_connections(Config) ->
     EpmdPort = start_slow_ride([], Config),
     {ok, N1, _} = slow_ride_ct:start_waiting_node(EpmdPort),
-    N2 = list_to_atom(slow_ride_ct:random_node_name() ++ "@localhost"),
+    N2 = slow_ride_ct:random_node_name(),
     run_ctl(["block", atom_to_list(N1), atom_to_list(N2)], Config),
     "pang" = slow_ride_ct:pinger_node(N2, EpmdPort, N1),
     ok.
 
-blocking_drops_existing_connection(_Config) ->
+blocking_drops_existing_connection(Config) ->
+    EpmdPort = start_slow_ride([], Config),
+    {ok, N1, _} = slow_ride_ct:start_waiting_node(EpmdPort),
+    Script = io_lib:format("
+        monitor_node('~s', true),
+        pong = net_adm:ping('~s'),
+        io:format(\"CONNECT!!!\"),
+        receive
+          {nodedown, '~s'} -> io:format(\"DOWN!!!\")
+        after
+          10000 -> io:format(\"MISSING!!!\")
+        end
+    ", [N1, N1, N1]),
+    {ok, N2, P2} = slow_ride_ct:start_waiting_node(EpmdPort, ["-eval", Script]),
+    receive {P2, {data, "CONNECT!!!"}} -> ok after 10000 -> exit(no_connect_ack) end,
+    run_ctl(["block", atom_to_list(N1), atom_to_list(N2)], Config),
+    receive
+        {P2, {data, "DOWN!!!"}} ->
+            ct:pal("Disconnect acknowledged"),
+            ok;
+        {P2, {data, "MISSING!!!"}} ->
+            exit(missing_nodedown_detected)
+    after
+        20000 ->
+            exit(test_script_timeout)
+    end,
     ok.
 
 custom_callback_action_invoked(Config) ->

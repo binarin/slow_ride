@@ -122,7 +122,9 @@ loop_dist(#state{transport_ok = OK, transport_closed = Closed, transport_error =
             Transport:close(Socket);
         {Closed, TargetSocket} ->
             lager:debug("Dist - close on outgoing socket", []),
-            Transport:close(Socket)
+            Transport:close(Socket);
+        Info ->
+            handle_dist_info(Info, State)
     end.
 
 handle_challenge_ack(Data, #state{target_socket = TargetSocket, transport = Transport, socket = Socket} = State) ->
@@ -180,6 +182,9 @@ invoke_forward_packet_callback(Data, #state{callback_module = Mod, callback_args
 invoke_reverse_packet_callback(Data, #state{callback_module = Mod, callback_args = Args, node = Target, from = Source}) ->
     Mod:packet(Target, Source, Data, Args).
 
+invoke_dist_info_callback(Info, #state{callback_module = Mod, callback_args = Args}) ->
+    Mod:handle_dist_info(Info, Args).
+
 handle_callback_result({ok, Args}, State) ->
     loop_dist(State#state{callback_args = Args});
 handle_callback_result({drop, _}, State) ->
@@ -192,3 +197,6 @@ close_target(#state{target_socket = TargetSocket}) ->
 
 close_source(#state{socket = Socket, transport = Transport}) ->
     Transport:close(Socket).
+
+handle_dist_info(Info, State) ->
+    handle_callback_result(invoke_dist_info_callback(Info, State), State).

@@ -1,9 +1,13 @@
 -module(slow_ride).
 -behaviour(gen_server).
 
+-type callback_state() :: term().
+-type callback_result() :: {ok, callback_state()} | {drop, callback_state()}.
+
 -callback connection_established(node(), node(), State) -> {ok, State} when State :: term().
 -callback node_registered(NodeWithoutHost :: atom(), State) -> {ok, State} when State :: term().
 -callback packet(node(), node(), binary(), State) -> {ok, State} when State :: term().
+-callback handle_dist_info(term(), callback_state()) -> callback_result().
 %% init_global called once, its result is then passed to init of every connection
 -callback init_global(term()) -> {ok, State} when State :: term().
 -callback init(term()) -> {ok, State} when State :: term().

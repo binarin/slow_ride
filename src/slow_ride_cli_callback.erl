@@ -6,6 +6,7 @@
         ,packet/4
         ,init/1
         ,init_global/1
+        ,handle_dist_info/2
         ]).
 
 -export([action/3]).
@@ -23,7 +24,7 @@ connection_established(Source, Dest, State) ->
         true ->
             lager:info("Connection between '~s' and '~s' established", [Source, Dest]),
             gproc:add_local_name(slow_ride:node_pair(Source, Dest)),
-            {ok, State};
+            {ok, #{source => Source, destination => Dest}};
         false ->
             lager:info("Connection between '~s' and '~s' blocked, dropping", [Source, Dest]),
             {drop, State}
@@ -36,6 +37,14 @@ node_registered(NodeName, State) ->
 packet(_SourceNode, _DestinationNode, _Data, State) ->
     {ok, State}.
 
+handle_dist_info(drop, State) ->
+    #{source := Source, destination := Dest} = State,
+    lager:info("Dropping existing connection between ~s and ~s", [Source, Dest]),
+    {drop, State};
+handle_dist_info(Info, State) ->
+    lager:info("Unknown info ~p", [Info]),
+    {ok, State}.
+
 action("block", [N1, N2], _) ->
     io:format("blocking communications between ~s and ~s", [N1, N2]),
     block(N1, N2),
@@ -46,6 +55,7 @@ action(_, _, _) ->
 block(N1, N2) ->
     Name = slow_ride:node_pair(list_to_atom(N1), list_to_atom(N2)),
     ets:insert(blocked_connections, [{Name}]),
+    notify_dist_proc(Name, drop),
     ok.
 
 is_connection_allowed(N1, N2) ->
@@ -55,3 +65,12 @@ is_connection_allowed(N1, N2) ->
         _ ->
             true
     end.
+
+notify_dist_proc(Name, Message) ->
+    case gproc:lookup_pids({n, l, Name}) of
+        [Pid] ->
+            Pid ! Message;
+        _ ->
+            ok
+    end,
+    ok.

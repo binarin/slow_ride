@@ -6,12 +6,16 @@
         ,packet/4
         ,init/1
         ,init_global/1
+        ,handle_dist_info/2
         ]).
 
 init(State) ->
     {ok, State}.
 
 init_global(State) ->
+    {ok, State}.
+
+handle_dist_info(_, State) ->
     {ok, State}.
 
 connection_established(_SourceNode, _DestinationNode, State) ->

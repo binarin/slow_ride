@@ -20,6 +20,7 @@
         , packet/4
         , init/1
         , init_global/1
+        , handle_dist_info/2
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -156,6 +157,9 @@ init(State) ->
 init_global(State) ->
     {ok, State}.
 
+handle_dist_info(_, State) ->
+    {ok, State}.
+
 connection_established(From, To, [ReportTo, ReportRef] = State) ->
     ReportTo ! {connection_established, ReportRef, From, To},
     ets:insert(dist_packet_count, {{From, To}, 0}),
@@ -184,13 +188,13 @@ flush() ->
 
 start_node(Args)->
     EpmdPort = slow_ride:get_port(),
-    Name = slow_ride_ct:random_node_name(),
+    NameAtom = slow_ride_ct:random_node_name(),
+    Name = atom_to_list(NameAtom),
     Port = erlang:open_port({spawn_executable, erlsh:fdlink_executable()},
-                            [{args, [os:find_executable("erl"), "-noshell", "-sname", Name ++ "@localhost", "-cookie", "test"] ++ Args}
+                            [{args, [os:find_executable("erl"), "-noshell", "-sname", Name, "-cookie", "test"] ++ Args}
                             ,{env, [{"ERL_EPMD_PORT", integer_to_list(EpmdPort)}]}
                             ,exit_status
                             ]),
-    NameAtom = list_to_atom(Name ++ "@localhost"),
     {ok, NameAtom, Port}.
 
 start_short_lived_node(Args) ->
