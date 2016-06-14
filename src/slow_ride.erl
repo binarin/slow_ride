@@ -121,6 +121,8 @@ handle_call(_Msg, _From, State) ->
 handle_cast(_Request, State) ->
     {noreply, State}.
 
+handle_info({'EXIT', Pid, Info}, State) ->
+    handle_down(Pid, Info, State);
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -152,3 +154,17 @@ start_listener() ->
 
 stop_listener() ->
     ranch:stop_listener(slow_ride_listener).
+
+handle_down(Pid, Info, #state{nodes = Nodes} = State) ->
+    case maps:get(Pid, Nodes, undefined) of
+        undefined ->
+            {noreply, State};
+        NodeName ->
+            lager:info("Unregistering ~s due to exit ~p", [NodeName, Info]),
+            {noreply, remove_node(Pid, NodeName, State)}
+    end.
+
+remove_node(Pid, NodeName, #state{nodes = Nodes0} = State) ->
+    Nodes = maps:remove(Pid, Nodes0),
+    ets:delete(slow_ride_nodes, NodeName),
+    State#state{nodes = Nodes}.

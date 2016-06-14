@@ -10,6 +10,7 @@
         , dist_connection_is_reported/1
         , packet_callback_invoked/1
         , noop/1
+        , node_unregistered_when_gone/1
         ]).
 
 -export([connection_reporter/2]).
@@ -35,6 +36,7 @@ all() ->
     , epmd_connection_is_reported
     , dist_connection_is_reported
     , packet_callback_invoked
+    , node_unregistered_when_gone
     ].
 
 init_per_suite(Config) ->
@@ -146,6 +148,13 @@ packet_callback_invoked(_Config) ->
             ct:pal("Node ~p, ets ~p", [N1, ets:match(dist_packet_count, '$1')]),
             ct:fail(no_traces_of_callbacks_at_all)
     end,
+    ok.
+
+node_unregistered_when_gone(_Conifg) ->
+    Name = slow_ride_ct:random_node_name(),
+    EpmdPort = slow_ride:get_port(),
+    slow_ride_ct:start_short_lived_node(Name, EpmdPort, []),
+    [] = slow_ride_ct:names(EpmdPort),
     ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

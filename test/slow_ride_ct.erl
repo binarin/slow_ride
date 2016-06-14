@@ -8,6 +8,8 @@
         ,run_in_foreground/2
         ,run_for_stdout/1
         ,pinger_node/3
+        ,names/1
+        ,start_short_lived_node/3
         ]).
 
 random_node_name() ->
@@ -103,3 +105,12 @@ node_name_as_str(Name) when is_atom(Name) ->
     atom_to_list(Name);
 node_name_as_str(Name) when is_list(Name) ->
     Name.
+
+names(EpmdPort) ->
+    EpmdCmd = lists:flatten(io_lib:format("ERL_EPMD_PORT=~b epmd -names", [EpmdPort])),
+    {done, 0, NamesOut} = erlsh:run(EpmdCmd, binary, "/tmp"),
+    [<<"epmd: up and running", _/binary>>|NameLines] = re:split(NamesOut, <<"\n">>, [{return, binary}, trim]),
+    [ begin
+          {match, [Name, _Port]} = re:run(Line, <<"^name (.+?) at port (\\d+)">>, [{capture, all_but_first, list}]),
+          list_to_atom(Name ++ "@localhost")
+      end || Line <- NameLines ].
