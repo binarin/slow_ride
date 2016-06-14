@@ -1,6 +1,7 @@
 -module(slow_ride_ct).
 -export([start_waiting_node/1
         ,start_waiting_node/2
+        ,start_waiting_node/3
         ,random_node_name/0
         ,run_in_background/1
         ,run_in_foreground/1
@@ -16,12 +17,12 @@ start_waiting_node(EpmdPort) ->
     start_waiting_node(EpmdPort, []).
 
 start_waiting_node(EpmdPort, Args) ->
-    {ok, N, P} = start_node(EpmdPort, ["-eval", "io:format(\"ok\")."] ++ Args),
-    receive {P, {data, "ok"}} -> ok after 10000 -> exit(node_failed_to_start) end,
-    {ok, N, P}.
+    start_waiting_node(random_node_name(), EpmdPort, Args).
 
-start_node(EpmdPort, Args) ->
-    start_node(random_node_name(), EpmdPort, Args).
+start_waiting_node(Name, EpmdPort, Args) ->
+    {ok, Name, P} = start_node(Name, EpmdPort, ["-eval", "io:format(\"ok\")."] ++ Args),
+    receive {P, {data, "ok"}} -> ok after 10000 -> exit(node_failed_to_start) end,
+    {ok, Name, P}.
 
 start_node(Name, EpmdPort, Args)->
     Port = erlang:open_port({spawn_executable, erlsh:fdlink_executable()},

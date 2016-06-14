@@ -9,7 +9,7 @@
 %% cases
 -export([blocking_prevents_new_connections/1
         ,blocking_drops_existing_connection/1
-        ,custom_callback_action_invoked/1
+        ,unblocking_works/1
         ]).
 
 %% cli action callback
@@ -22,7 +22,7 @@ action(_Cmd, _Args, _State) ->
 all() ->
     [blocking_prevents_new_connections
     ,blocking_drops_existing_connection
-    ,custom_callback_action_invoked
+    ,unblocking_works
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -68,9 +68,49 @@ blocking_drops_existing_connection(Config) ->
     end,
     ok.
 
-custom_callback_action_invoked(Config) ->
-    start_slow_ride([], Config),
+-define(UNBLOCK_SCRIPT, "
+    Res = lists:foldr(fun (_, trying)->
+                              case net_adm:ping(@N1@) of
+                                  pong ->
+                                      success;
+                                  pang ->
+                                      timer:sleep(100),
+                                      trying
+                              end;
+                          (_, success) ->
+                              success;
+                          (_, failure) ->
+                              failure
+                      end,
+                      trying,
+                      lists:seq(1, 20)),
+    case Res of
+        success ->
+            io:format(\"UNBLOCKED!!!\");
+        failure ->
+            io:format(\"FAILED!!!\")
+    end.
+").
+
+unblocking_works(Config) ->
+    EpmdPort = start_slow_ride([], Config),
+    {ok, N1, _} = slow_ride_ct:start_waiting_node(EpmdPort),
+    N2 = slow_ride_ct:random_node_name(),
+    Script = re:replace(?UNBLOCK_SCRIPT, "@N1@", "'" ++ atom_to_list(N2) ++ "'", [{return, list}]),
+    {ok, N2, P2} = slow_ride_ct:start_waiting_node(N2, EpmdPort, ["-eval", Script]),
+    run_ctl(["unblock", atom_to_list(N1), atom_to_list(N2)], Config),
+    receive
+        {P2, {data, "UNBLOCKED!!!"}} ->
+            ct:pal("Reconnect acknowledged"),
+            ok;
+        {P2, {data, "FAILED!!!"}} ->
+            exit(missing_nodedown_detected)
+    after
+        5000 ->
+            exit(test_script_timeout)
+    end,
     ok.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helpers

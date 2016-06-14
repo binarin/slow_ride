@@ -49,6 +49,9 @@ action("block", [N1, N2], _) ->
     io:format("blocking communications between ~s and ~s", [N1, N2]),
     block(N1, N2),
     ok;
+action("unblock", [N1, N2], _) ->
+    io:format("unblocking communications between ~s and ~s", [N1, N2]),
+    unblock(list_to_atom(N1), list_to_atom(N2));
 action(_, _, _) ->
     not_supported.
 
@@ -56,6 +59,11 @@ block(N1, N2) ->
     Name = slow_ride:node_pair(list_to_atom(N1), list_to_atom(N2)),
     ets:insert(blocked_connections, [{Name}]),
     notify_dist_proc(Name, drop),
+    ok.
+
+unblock(N1, N2) ->
+    Name = slow_ride:node_pair(N1, N2),
+    ets:delete(blocked_connections, Name),
     ok.
 
 is_connection_allowed(N1, N2) ->
